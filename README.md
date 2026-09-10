@@ -1,5 +1,7 @@
 # ChillDesktop
 
+> 只需拖入插件即可实现游戏壁纸化。
+
 把 Steam 游戏 **《Chill with You Lo-Fi Story》** 变成**可交互的动态桌面壁纸**。
 
 - 游戏铺在桌面最底层，女孩持续动画、lo-fi BGM 持续播放；
