@@ -1,0 +1,2 @@
+# chillgirldesktopPlugin
+只需拖入插件即可实现游戏壁纸化
