@@ -141,6 +141,10 @@ namespace ChillDesktop
             _layer = new DesktopLayer();
             _layer.EnsureLayers();
 
+            // 任务栏控制器：趁「还没动过任务栏」，先采一次置顶属性基线
+            if (_taskbar == null) _taskbar = new TaskbarController();
+            if (!_fullscreen) _taskbar.RememberBaseline();
+
             _guard = new WindowGuard
             {
                 BlockMinimize = _cfg.BlockMinimize,
@@ -315,6 +319,12 @@ namespace ChillDesktop
 
                 // 全屏模式：Explorer 重启后任务栏句柄会换新，这里重新接管
                 if (_fullscreen) _taskbar?.EnsureHidden();
+                else
+                {
+                    // 非全屏时持续采样任务栏的「正常」置顶属性，作为恢复时的权威基线
+                    if (_taskbar == null) _taskbar = new TaskbarController();
+                    _taskbar.RememberBaseline();
+                }
 
                 if (!_wallpaperOn) return;
 

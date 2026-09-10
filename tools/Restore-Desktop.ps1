@@ -17,6 +17,10 @@ public static extern int GetClassName(IntPtr hWnd, System.Text.StringBuilder sb,
 [DllImport("user32.dll")]
 public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 [DllImport("user32.dll")]
+public static extern bool SetWindowPos(IntPtr hWnd, IntPtr after, int X, int Y, int cx, int cy, uint flags);
+[DllImport("user32.dll")]
+public static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+[DllImport("user32.dll")]
 public static extern bool IsWindowVisible(IntPtr hWnd);
 [DllImport("user32.dll")]
 public static extern bool IsWindow(IntPtr hWnd);
@@ -65,18 +69,24 @@ $trayHandles += $script:extra
 if ($trayHandles.Count -eq 0) {
     Write-Host "任务栏：没找到 Shell_TrayWnd（Explorer 可能没在跑）。"
 } else {
-    $restored = 0
+    $restored = 0; $fixed = 0
     foreach ($t in $trayHandles) {
-        if (-not [Dsh.Win]::IsWindowVisible($t)) {
-            [Dsh.Win]::ShowWindow($t, $SW_SHOW) | Out-Null
-            $restored++
+        $hidden = -not [Dsh.Win]::IsWindowVisible($t)
+        $notTop = ([Dsh.Win]::GetWindowLong($t, -20) -band 0x8) -eq 0
+        if ($hidden -or $notTop) {
+            # 注意：ShowWindow(SW_HIDE)→SW_SHOW 会丢掉 WS_EX_TOPMOST，
+            # 任务栏会"可见"却被压在普通窗口下面，所以必须一并把置顶属性补回去。
+            [Dsh.Win]::SetWindowPos($t, [IntPtr](-1), 0, 0, 0, 0,
+                0x0002 -bor 0x0001 -bor 0x0010 -bor 0x0040) | Out-Null   # NOMOVE|NOSIZE|NOACTIVATE|SHOWWINDOW
+            if ($hidden) { $restored++ }
+            if ($notTop) { $fixed++ }
         }
     }
-    if ($restored -gt 0) {
-        Write-Host "任务栏：已恢复 $restored 个窗口。"
+    if ($restored -gt 0 -or $fixed -gt 0) {
+        Write-Host "任务栏：已恢复 $restored 个（另修正 $fixed 个被压掉的置顶属性）。"
         $changed = $true
     } else {
-        Write-Host "任务栏：本来就是可见的，无需处理。"
+        Write-Host "任务栏：本来就是可见且置顶的，无需处理。"
     }
 }
 
