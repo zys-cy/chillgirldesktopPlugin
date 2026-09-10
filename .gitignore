@@ -1,0 +1,13 @@
+# 构建产物
+bin/
+obj/
+*.user
+*.suo
+.vs/
+
+# 日志
+*.log
+
+# 发布产物
+dist/
+*.zip
