@@ -25,16 +25,20 @@ namespace ChillDesktop
         private DesktopLayer _layer;
         private WindowGuard _guard;
         private FolderWidget _widget;
+        private TaskbarController _taskbar;
         private PluginConfig _cfg;
 
         private bool _started;
         private bool _shutdown;
         private bool _wallpaperOn = true;
+        private bool _fullscreen;
         private int _missingCount;
 
         private float _nextHeartbeat;
         private float _nextFastPoll;
         private bool _hotkeyWasDown;
+        private int _fullscreenVk;
+        private bool _fullscreenKeyWasDown;
 
         private System.Threading.Timer _diag;
 
@@ -53,13 +57,21 @@ namespace ChillDesktop
             _instance = this;
             _cfg = ChillDesktopPlugin.Settings ?? new PluginConfig();
 
+            _fullscreenVk = _cfg.FullscreenKey
+                ? TaskbarController.ParseVirtualKey(_cfg.FullscreenToggleKey)
+                : 0;
+            if (_cfg.FullscreenKey && _fullscreenVk == 0)
+                Log.Write($"全屏模式热键 \"{_cfg.FullscreenToggleKey}\" 无法识别，已禁用" +
+                          "（支持 F1~F24 / A~Z / 0~9）。");
+
             // 屏幕物理像素：优先 Unity 的 Display（不受进程 DPI 感知方式影响）
             DesktopLayer.ScreenSizeProvider = () =>
                 new Size(Display.main.systemWidth, Display.main.systemHeight);
 
             AppDomain.CurrentDomain.ProcessExit += OnProcessExit;
 
-            Log.Write($"[Runner] 已挂载（scene={gameObject.scene.name}）");
+            Log.Write($"[Runner] 已挂载（scene={gameObject.scene.name}）" +
+                      (_fullscreenVk != 0 ? $"，全屏模式热键={_cfg.FullscreenToggleKey}" : "，全屏模式热键=关闭"));
             StartCoroutine(Bootstrap());
         }
 
@@ -119,6 +131,8 @@ namespace ChillDesktop
             _nextFastPoll = now + Mathf.Max(0.05f, _cfg.FastPollSeconds);
             Log.Write("ChillDesktop 壁纸模式已生效。");
 
+            if (_cfg.HideTaskbarOnStart) SetFullscreen(true);
+
             if (_cfg.Diagnostics) StartDiagnostics();
         }
 
@@ -157,12 +171,34 @@ namespace ChillDesktop
             }
         }
 
-        /// <summary>临时把壁纸收起来：还原游戏窗口、销毁工具箱，但保留守卫与心跳。</summary>
+        /// <summary>临时把壁纸收起来：还原游戏窗口、销毁工具箱、恢复任务栏，但保留守卫与心跳。</summary>
         private void HideWallpaper()
         {
+            SetFullscreen(false);
             try { _widget?.Dispose(); } catch (Exception ex) { Log.Error("HideWallpaper.widget", ex); }
             _widget = null;
             try { _layer?.Detach(); } catch (Exception ex) { Log.Error("HideWallpaper.detach", ex); }
+        }
+
+        // ---------- 全屏模式（隐藏 Windows 任务栏） ----------
+
+        private void SetFullscreen(bool on)
+        {
+            if (_fullscreen == on) return;
+
+            // 任务栏控制器每次都新建：Explorer 重启后句柄会变，重建最省心
+            if (_taskbar == null) _taskbar = new TaskbarController();
+
+            if (on)
+            {
+                _fullscreen = _taskbar.Hide() || _fullscreen;
+                if (_fullscreen) Log.Write("F11 全屏模式：已隐藏任务栏（再按一次恢复）");
+            }
+            else
+            {
+                _taskbar.Show();
+                _fullscreen = false;
+            }
         }
 
         // ---------- 每帧 ----------
@@ -171,7 +207,7 @@ namespace ChillDesktop
         {
             if (!_started || _shutdown) return;
 
-            HandleHotkey();
+            HandleHotkeys();
 
             float now = Time.realtimeSinceStartup;
 
@@ -189,22 +225,39 @@ namespace ChillDesktop
             }
         }
 
-        private void HandleHotkey()
+        private void HandleHotkeys()
         {
-            if (!_cfg.ToggleHotkey) return;
-
-            bool down = User32.IsKeyDown(User32.VK_CONTROL) &&
-                        User32.IsKeyDown(User32.VK_MENU) &&
-                        User32.IsKeyDown(User32.VK_D);
-
-            if (down && !_hotkeyWasDown)
+            // Ctrl+Alt+D：临时开关壁纸模式
+            if (_cfg.ToggleHotkey)
             {
-                _hotkeyWasDown = true;
-                ToggleWallpaper();
+                bool down = User32.IsKeyDown(User32.VK_CONTROL) &&
+                            User32.IsKeyDown(User32.VK_MENU) &&
+                            User32.IsKeyDown(User32.VK_D);
+
+                if (down && !_hotkeyWasDown)
+                {
+                    _hotkeyWasDown = true;
+                    ToggleWallpaper();
+                }
+                else if (!down)
+                {
+                    _hotkeyWasDown = false;
+                }
             }
-            else if (!down)
+
+            // F11（可配）：全屏模式，隐藏/恢复 Windows 任务栏
+            if (_fullscreenVk != 0)
             {
-                _hotkeyWasDown = false;
+                bool down = User32.IsKeyDown(_fullscreenVk);
+                if (down && !_fullscreenKeyWasDown)
+                {
+                    _fullscreenKeyWasDown = true;
+                    SetFullscreen(!_fullscreen);
+                }
+                else if (!down)
+                {
+                    _fullscreenKeyWasDown = false;
+                }
             }
         }
 
@@ -232,7 +285,7 @@ namespace ChillDesktop
         {
             try
             {
-                if (!_wallpaperOn) return;
+                if (!_wallpaperOn || _shutdown) return;
 
                 IntPtr gh = _layer?.GameHwnd ?? IntPtr.Zero;
                 if (gh == IntPtr.Zero) return;
@@ -258,6 +311,11 @@ namespace ChillDesktop
         {
             try
             {
+                if (_shutdown) return;
+
+                // 全屏模式：Explorer 重启后任务栏句柄会换新，这里重新接管
+                if (_fullscreen) _taskbar?.EnsureHidden();
+
                 if (!_wallpaperOn) return;
 
                 if (_layer == null || !_layer.Heartbeat())
@@ -310,6 +368,9 @@ namespace ChillDesktop
 
         private void SafeDetach()
         {
+            // 任务栏和桌面图标一样是「我们改过的系统状态」，退出必须还原
+            try { _taskbar?.Show(); } catch (Exception ex) { Log.Error("SafeDetach.taskbar", ex); }
+            _fullscreen = false;
             try { _widget?.Dispose(); } catch { }
             _widget = null;
             try { _guard?.Dispose(); } catch { }
@@ -342,9 +403,9 @@ namespace ChillDesktop
             try { _diag?.Dispose(); } catch { }
             _diag = null;
 
-            if (_layer == null && _guard == null && _widget == null) return;
+            if (_layer == null && _guard == null && _widget == null && _taskbar == null) return;
 
-            Log.Write("插件卸载（" + why + "），还原游戏窗口与桌面图标。");
+            Log.Write("插件卸载（" + why + "），还原游戏窗口、桌面图标与任务栏。");
             SafeDetach();
             if (ReferenceEquals(_instance, this)) _instance = null;
         }

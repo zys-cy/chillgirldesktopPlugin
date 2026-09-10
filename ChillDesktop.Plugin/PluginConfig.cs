@@ -23,6 +23,10 @@ namespace ChillDesktop
         public string ChillGirlPath = "";
         public bool ToggleHotkey = true;
 
+        public bool FullscreenKey = true;
+        public string FullscreenToggleKey = "F11";
+        public bool HideTaskbarOnStart;
+
         public float RefWidth = 2560f;
         public float RefHeight = 1600f;
         public float NoteCx = 2454f;
@@ -58,6 +62,13 @@ namespace ChillDesktop
                 "工具箱按钮打开的文件夹；留空 = 桌面\\chillgirl").Value;
             ToggleHotkey = cfg.Bind("Toolbox", "ToggleHotkey", true,
                 "Ctrl+Alt+D 临时关闭/恢复壁纸模式（还原游戏窗口为普通窗口）").Value;
+
+            FullscreenKey = cfg.Bind("Fullscreen", "Enabled", true,
+                "是否启用「全屏模式」热键（隐藏/恢复 Windows 底部任务栏）").Value;
+            FullscreenToggleKey = cfg.Bind("Fullscreen", "ToggleKey", "F11",
+                "全屏模式热键。支持 F1~F24 / A~Z / 0~9；填 NONE 关闭").Value;
+            HideTaskbarOnStart = cfg.Bind("Fullscreen", "HideTaskbarOnStart", false,
+                "启动时就直接进入全屏模式（默认不隐藏任务栏，靠热键切换）").Value;
 
             RefWidth = cfg.Bind("Layout", "RefWidth", 2560f, "按钮坐标的参考分辨率宽").Value;
             RefHeight = cfg.Bind("Layout", "RefHeight", 1600f, "按钮坐标的参考分辨率高").Value;
