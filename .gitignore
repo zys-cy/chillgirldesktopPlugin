@@ -11,3 +11,7 @@ obj/
 # 发布产物
 dist/
 *.zip
+
+# Python
+__pycache__/
+*.pyc

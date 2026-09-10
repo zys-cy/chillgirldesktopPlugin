@@ -1,0 +1,81 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    ChillDesktop BepInEx 5 插件（Unity Mono / x64 / net46）。
+
+    编译前提：
+      - 已安装游戏（默认 Steam 路径；可用环境变量 CHILL_GAME_DIR 或
+        dotnet build -p:GameDir="..." 覆盖）。需要游戏自带的 UnityEngine*.dll 作为编译引用
+        （只在编译期用，Private=false，不会跟着发布包走）。
+      - lib/bepinex/BepInEx.dll 是 BepInEx 5.4.23.5 的托管入口程序集，仅作编译引用。
+
+    构建产物默认自动拷到 <GameDir>\BepInEx\plugins\，方便实机测试；
+    不想要这个行为就 dotnet build -p:DeployToGame=false。
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net46</TargetFramework>
+    <AssemblyName>ChillDesktop.Plugin</AssemblyName>
+    <RootNamespace>ChillDesktop</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <DebugType>portable</DebugType>
+    <Version>0.1.0</Version>
+    <NoWarn>$(NoWarn);CS0618</NoWarn>
+  </PropertyGroup>
+
+  <!-- 游戏路径 -->
+  <PropertyGroup>
+    <GameDir Condition="'$(GameDir)' == ''">$(CHILL_GAME_DIR)</GameDir>
+    <GameDir Condition="'$(GameDir)' == ''">C:\Program Files (x86)\Steam\steamapps\common\Chill with You Lo-Fi Story</GameDir>
+    <ManagedDir>$(GameDir)\Chill With You_Data\Managed</ManagedDir>
+    <DeployToGame Condition="'$(DeployToGame)' == ''">true</DeployToGame>
+  </PropertyGroup>
+
+  <!-- net46 目标框架的参考程序集（本机没装 .NET Framework 开发包时靠它） -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="System.Drawing" />
+    <Reference Include="BepInEx">
+      <HintPath>$(MSBuildThisFileDirectory)..\lib\bepinex\BepInEx.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <!--
+      Unity 2022.3 自带的 UnityEngine.*.dll 是按 .NET Standard 2.1 编译的，
+      从 net46 工程引用它们时编译器会要求 netstandard 2.1 契约程序集。
+      游戏 Managed 目录里就有这个 facade（纯类型转发），指过去即可。
+      运行时也用同一份（游戏自己的 Mono 运行库），不会打进发布包。
+    -->
+    <Reference Include="netstandard">
+      <HintPath>$(ManagedDir)\netstandard.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <!-- 编译期引用游戏自带的 Unity 程序集；不随发布包分发 -->
+    <Reference Include="UnityEngine">
+      <HintPath>$(ManagedDir)\UnityEngine.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>$(ManagedDir)\UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <Target Name="ValidateManagedDir" BeforeTargets="ResolveAssemblyReferences">
+    <Error Condition="!Exists('$(ManagedDir)\UnityEngine.CoreModule.dll')"
+           Text="找不到游戏托管程序集：$(ManagedDir)。请用 -p:GameDir=&quot;游戏根目录&quot; 指定。" />
+  </Target>
+
+  <Target Name="DeployToGame" AfterTargets="Build" Condition="'$(DeployToGame)' == 'true'">
+    <MakeDir Directories="$(GameDir)\BepInEx\plugins" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(GameDir)\BepInEx\plugins" />
+    <Message Importance="high" Text="已部署插件：$(GameDir)\BepInEx\plugins\$(TargetFileName)" />
+  </Target>
+
+</Project>
